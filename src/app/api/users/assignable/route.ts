@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
       .find({}, { projection: { passwordHash: 0 } })
       .toArray();
 
-    const formattedUsers = allUsers.map((u) => ({
+    const formattedUsers = allUsers.map((u: any) => ({
       _id: u._id.toString(),
       name: u.name,
       email: u.email,

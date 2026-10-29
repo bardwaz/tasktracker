@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       .toArray();
 
     const userMap = new Map<string, any>();
-    allUsers.forEach((u) => {
+    allUsers.forEach((u: any) => {
       userMap.set(u._id.toString(), {
         _id: u._id.toString(),
         name: u.name,
@@ -48,18 +48,18 @@ export async function GET(req: NextRequest) {
         targetUserIds = [session.userId];
       } else if (filterType === "subordinates") {
         targetUserIds = allUsers
-          .filter((u) => u._id.toString() !== session.userId)
-          .map((u) => u._id.toString());
+          .filter((u: any) => u._id.toString() !== session.userId)
+          .map((u: any) => u._id.toString());
       } else {
         // all
-        targetUserIds = allUsers.map((u) => u._id.toString());
+        targetUserIds = allUsers.map((u: any) => u._id.toString());
       }
     } else {
       // Member can see self + strictly lower levels
       const lowerLevelUsers = allUsers.filter(
-        (u) => Number(u.level) < Number(session.level)
+        (u: any) => Number(u.level) < Number(session.level)
       );
-      const lowerLevelIds = lowerLevelUsers.map((u) => u._id.toString());
+      const lowerLevelIds = lowerLevelUsers.map((u: any) => u._id.toString());
 
       if (filterType === "my") {
         targetUserIds = [session.userId];
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
       .sort({ createdAt: -1 })
       .toArray();
 
-    const populatedTasks = rawTasks.map((t) => ({
+    const populatedTasks = rawTasks.map((t: any) => ({
       ...t,
       _id: t._id.toString(),
       assignedToUser: userMap.get(t.assignedTo) || {
