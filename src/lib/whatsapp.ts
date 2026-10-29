@@ -94,7 +94,42 @@ export async function sendWhatsAppTaskAlert(
     const data = await res.json();
 
     if (!res.ok || data.error) {
-      console.error("[WhatsApp Cloud API Error]:", JSON.stringify(data.error || data));
+      console.warn("[WhatsApp Cloud API Warning]:", JSON.stringify(data.error || data));
+
+      // If user is outside 24h window (error 131047), fall back to Template Message
+      const isWindowError =
+        data.error?.code === 131047 ||
+        data.error?.error_subcode === 2494011 ||
+        data.error?.message?.includes("24 hours");
+
+      if (isWindowError) {
+        console.log(`[WhatsApp] Recipient outside 24h window. Attempting template message fallback to ${recipient}...`);
+        const templateName = process.env.WHATSAPP_TEMPLATE_NAME || "hello_world";
+        const templateRes = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: recipient,
+            type: "template",
+            template: {
+              name: templateName,
+              language: { code: "en_US" },
+            },
+          }),
+        });
+
+        const templateData = await templateRes.json();
+        if (templateRes.ok && !templateData.error) {
+          const tId = templateData.messages?.[0]?.id;
+          console.log(`[WhatsApp] Template fallback successfully delivered (ID: ${tId})`);
+          return { success: true, messageId: tId };
+        }
+      }
+
       return {
         success: false,
         error: data.error?.message || "Failed to send WhatsApp message",
