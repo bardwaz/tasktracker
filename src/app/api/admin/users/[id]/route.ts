@@ -41,6 +41,7 @@ export async function PATCH(
 
     if (body.title !== undefined) updateFields.title = body.title.trim();
     if (body.name !== undefined) updateFields.name = body.name.trim();
+    if (body.phone !== undefined) updateFields.phone = body.phone.trim();
     if (body.role !== undefined && ["ADMIN", "MEMBER"].includes(body.role)) {
       updateFields.role = body.role;
     }

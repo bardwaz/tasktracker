@@ -12,6 +12,7 @@ export interface IUser {
   role: UserRole;
   level: number;
   title?: string;
+  phone?: string;
   createdAt?: string | Date;
   updatedAt?: string | Date;
 }
@@ -23,6 +24,7 @@ export interface ISafeUser {
   role: UserRole;
   level: number;
   title?: string;
+  phone?: string;
   createdAt?: string | Date;
 }
 
@@ -35,6 +37,7 @@ export interface ITask {
   assignedTo: string; // User ID
   assignedBy: string; // User ID
   dueDate?: string;
+  whatsappNotified?: boolean;
   createdAt?: string | Date;
   updatedAt?: string | Date;
   // Populated fields for UI

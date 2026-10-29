@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, email, password, level, role = "MEMBER", title } = await req.json();
+    const { name, email, password, level, role = "MEMBER", title, phone } = await req.json();
 
     if (!name || !email || !password) {
       return NextResponse.json(
@@ -83,6 +83,7 @@ export async function POST(req: NextRequest) {
       role: role === "ADMIN" ? "ADMIN" : "MEMBER",
       level: numericLevel,
       title: title ? title.trim() : `Level ${numericLevel} Contributor`,
+      phone: phone ? phone.trim() : undefined,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

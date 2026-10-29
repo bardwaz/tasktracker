@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getDb } from "@/lib/mongodb";
 import { canAssignTask } from "@/lib/precedence";
+import { sendWhatsAppTaskAlert } from "@/lib/whatsapp";
 import { ObjectId } from "mongodb";
 
 // GET /api/tasks - List tasks visible to current user
@@ -190,11 +191,25 @@ export async function POST(req: NextRequest) {
       assignedTo: targetUserId,
       assignedBy: session.userId,
       dueDate: dueDate || null,
+      whatsappNotified: Boolean(targetUser.phone),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
     const result = await db.collection("tasks").insertOne(newTask);
+
+    // If target has a registered WhatsApp phone, dispatch alert asynchronously
+    if (targetUser.phone) {
+      sendWhatsAppTaskAlert({
+        toPhone: targetUser.phone,
+        taskTitle: newTask.title,
+        description: newTask.description,
+        priority: newTask.priority,
+        assignerName: session.name || "Manager",
+        assignerLevel: session.level,
+        dueDate: newTask.dueDate || undefined,
+      }).catch((err) => console.error("WhatsApp notification error:", err));
+    }
 
     return NextResponse.json({
       success: true,
@@ -202,7 +217,9 @@ export async function POST(req: NextRequest) {
         ...newTask,
         _id: result.insertedId.toString(),
       },
-      message: "Task assigned successfully",
+      message: targetUser.phone
+        ? "Task assigned & WhatsApp notification dispatched!"
+        : "Task assigned successfully",
     });
   } catch (error: any) {
     console.error("Create task error:", error);

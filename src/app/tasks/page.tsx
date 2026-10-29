@@ -336,20 +336,31 @@ export default function TasksPage() {
                   <div className="p-5">
                     {/* Priority & Status Header */}
                     <div className="flex items-center justify-between mb-3">
-                      {/* Priority pill */}
-                      <span
-                        className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                          task.priority === "URGENT"
-                            ? "bg-rose-100 text-rose-700 border border-rose-200"
-                            : task.priority === "HIGH"
-                            ? "bg-amber-100 text-amber-700 border border-amber-200"
-                            : task.priority === "MEDIUM"
-                            ? "bg-blue-100 text-blue-700 border border-blue-200"
-                            : "bg-slate-100 text-slate-600 border border-slate-200"
-                        }`}
-                      >
-                        {task.priority}
-                      </span>
+                      <div className="flex items-center space-x-1.5">
+                        <span
+                          className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                            task.priority === "URGENT"
+                              ? "bg-rose-100 text-rose-700 border border-rose-200"
+                              : task.priority === "HIGH"
+                              ? "bg-amber-100 text-amber-700 border border-amber-200"
+                              : task.priority === "MEDIUM"
+                              ? "bg-blue-100 text-blue-700 border border-blue-200"
+                              : "bg-slate-100 text-slate-600 border border-slate-200"
+                          }`}
+                        >
+                          {task.priority}
+                        </span>
+
+                        {task.whatsappNotified && (
+                          <span
+                            title="WhatsApp alert dispatched"
+                            className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 flex items-center space-x-1"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span>WhatsApp</span>
+                          </span>
+                        )}
+                      </div>
 
                       {/* Status Dropdown/Selector */}
                       <select

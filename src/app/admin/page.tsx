@@ -15,6 +15,7 @@ import {
   AlertCircle,
   TrendingDown,
   Info,
+  Phone,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -31,6 +32,7 @@ export default function AdminPage() {
   const [formPassword, setFormPassword] = useState("");
   const [formLevel, setFormLevel] = useState<number>(10);
   const [formTitle, setFormTitle] = useState("");
+  const [formPhone, setFormPhone] = useState("");
   const [formRole, setFormRole] = useState<"MEMBER" | "ADMIN">("MEMBER");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -39,6 +41,7 @@ export default function AdminPage() {
   const [editingUser, setEditingUser] = useState<ISafeUser | null>(null);
   const [editLevelVal, setEditLevelVal] = useState<number>(10);
   const [editTitleVal, setEditTitleVal] = useState("");
+  const [editPhoneVal, setEditPhoneVal] = useState("");
 
   const fetchData = async () => {
     try {
@@ -92,6 +95,7 @@ export default function AdminPage() {
           password: formPassword,
           level: Number(formLevel),
           title: formTitle,
+          phone: formPhone,
           role: formRole,
         }),
       });
@@ -107,6 +111,7 @@ export default function AdminPage() {
       setFormPassword("");
       setFormLevel(10);
       setFormTitle("");
+      setFormPhone("");
       setFormRole("MEMBER");
       setShowAddModal(false);
       fetchData();
@@ -129,6 +134,7 @@ export default function AdminPage() {
         body: JSON.stringify({
           level: Number(editLevelVal),
           title: editTitleVal,
+          phone: editPhoneVal,
         }),
       });
 
@@ -283,6 +289,15 @@ export default function AdminPage() {
                       <td className="px-6 py-4">
                         <div className="font-semibold text-slate-900">{u.name}</div>
                         <div className="text-xs text-slate-400">{u.email}</div>
+                        {u.phone ? (
+                          <div className="mt-1 flex items-center space-x-1 text-[11px] text-emerald-700 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <Phone className="w-3 h-3 text-emerald-600" />
+                            <span>{u.phone}</span>
+                          </div>
+                        ) : (
+                          <div className="mt-1 text-[10px] text-slate-400">No WhatsApp linked</div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-slate-700 font-medium">
                         {u.title || "—"}
@@ -324,6 +339,7 @@ export default function AdminPage() {
                               setEditingUser(u);
                               setEditLevelVal(u.level);
                               setEditTitleVal(u.title || "");
+                              setEditPhoneVal(u.phone || "");
                             }}
                             className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition"
                             title="Edit level or title"
@@ -460,6 +476,23 @@ export default function AdminPage() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>WhatsApp Phone Number (Optional)</span>
+                    <span className="text-[10px] text-emerald-600 font-normal">Instant Task Alerts</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={formPhone}
+                    onChange={(e) => setFormPhone(e.target.value)}
+                    placeholder="+919876543210 (with country code)"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Include country code (e.g. +91 or +1). Member receives WhatsApp notifications when assigned tasks.
+                  </p>
+                </div>
+
                 <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
                   <button
                     type="button"
@@ -525,6 +558,23 @@ export default function AdminPage() {
                     onChange={(e) => setEditTitleVal(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>WhatsApp Phone Number</span>
+                    <span className="text-[10px] text-emerald-600 font-normal">Instant Task Alerts</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={editPhoneVal}
+                    onChange={(e) => setEditPhoneVal(e.target.value)}
+                    placeholder="+919876543210"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Include country code (e.g. +91 or +1).
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100">
