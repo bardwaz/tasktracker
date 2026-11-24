@@ -28,6 +28,15 @@ export interface ISafeUser {
   createdAt?: string | Date;
 }
 
+export interface ITaskComment {
+  _id: string;
+  userId: string;
+  userName: string;
+  userLevel: number;
+  text: string;
+  createdAt: string | Date;
+}
+
 export interface ITask {
   _id?: string;
   title: string;
@@ -38,6 +47,7 @@ export interface ITask {
   assignedBy: string; // User ID
   dueDate?: string;
   whatsappNotified?: boolean;
+  comments?: ITaskComment[];
   createdAt?: string | Date;
   updatedAt?: string | Date;
   // Populated fields for UI

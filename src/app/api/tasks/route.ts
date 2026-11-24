@@ -91,6 +91,7 @@ export async function GET(req: NextRequest) {
     const populatedTasks = rawTasks.map((t: any) => ({
       ...t,
       _id: t._id.toString(),
+      comments: t.comments || [],
       assignedToUser: userMap.get(t.assignedTo) || {
         _id: t.assignedTo,
         name: "Unknown User",
@@ -192,6 +193,7 @@ export async function POST(req: NextRequest) {
       assignedBy: session.userId,
       dueDate: dueDate || null,
       whatsappNotified: Boolean(targetUser.phone),
+      comments: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     };

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
-import { ISafeUser, ITask, TaskPriority, TaskStatus } from "@/types";
+import { ISafeUser, ITask, ITaskComment, TaskPriority, TaskStatus } from "@/types";
 import {
   Plus,
   Search,
@@ -19,6 +19,10 @@ import {
   Trash2,
   CheckSquare,
   Shield,
+  MessageSquare,
+  Send,
+  X,
+  MessageCircle,
 } from "lucide-react";
 
 export default function TasksPage() {
@@ -43,6 +47,14 @@ export default function TasksPage() {
   const [dueDate, setDueDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Task Discussion & Comments States
+  const [activeDiscussionTask, setActiveDiscussionTask] = useState<ITask | null>(null);
+  const [commentInput, setCommentInput] = useState("");
+  const [postingComment, setPostingComment] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
+  const commentsEndRef = useRef<HTMLDivElement | null>(null);
 
   const fetchSessionAndData = async () => {
     try {
@@ -110,6 +122,109 @@ export default function TasksPage() {
     }
   }, [tab, statusFilter, priorityFilter]);
 
+  // Scroll to bottom of comments when discussion task changes or comments update
+  useEffect(() => {
+    if (activeDiscussionTask && commentsEndRef.current) {
+      commentsEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [activeDiscussionTask?.comments]);
+
+  const openDiscussion = async (task: ITask) => {
+    setActiveDiscussionTask(task);
+    setCommentInput("");
+    setCommentError(null);
+    setLoadingComments(true);
+
+    try {
+      const res = await fetch(`/api/tasks/${task._id}/comments`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const updatedTask = { ...task, comments: data.data };
+        setActiveDiscussionTask(updatedTask);
+        setTasks((prev) =>
+          prev.map((t) => (t._id === task._id ? { ...t, comments: data.data } : t))
+        );
+      }
+    } catch (err) {
+      console.error("Failed to refresh comments:", err);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handlePostComment = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!commentInput.trim() || !activeDiscussionTask || postingComment) return;
+
+    setPostingComment(true);
+    setCommentError(null);
+
+    try {
+      const res = await fetch(`/api/tasks/${activeDiscussionTask._id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: commentInput.trim() }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to post comment");
+      }
+
+      const newComment: ITaskComment = data.data;
+      const updatedComments = [...(activeDiscussionTask.comments || []), newComment];
+
+      setActiveDiscussionTask((prev) =>
+        prev ? { ...prev, comments: updatedComments } : null
+      );
+
+      setTasks((prev) =>
+        prev.map((t) =>
+          t._id === activeDiscussionTask._id
+            ? { ...t, comments: updatedComments }
+            : t
+        )
+      );
+
+      setCommentInput("");
+    } catch (err: any) {
+      setCommentError(err.message || "Failed to post comment");
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!activeDiscussionTask || !confirm("Delete this comment?")) return;
+
+    try {
+      const res = await fetch(
+        `/api/tasks/${activeDiscussionTask._id}/comments?commentId=${commentId}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const updatedComments = (activeDiscussionTask.comments || []).filter(
+          (c) => c._id !== commentId
+        );
+
+        setActiveDiscussionTask((prev) =>
+          prev ? { ...prev, comments: updatedComments } : null
+        );
+
+        setTasks((prev) =>
+          prev.map((t) =>
+            t._id === activeDiscussionTask._id
+              ? { ...t, comments: updatedComments }
+              : t
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Failed to delete comment:", err);
+    }
+  };
+
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -161,6 +276,11 @@ export default function TasksPage() {
         setTasks((prev) =>
           prev.map((t) => (t._id === taskId ? { ...t, status: newStatus } : t))
         );
+        if (activeDiscussionTask?._id === taskId) {
+          setActiveDiscussionTask((prev) =>
+            prev ? { ...prev, status: newStatus } : null
+          );
+        }
       }
     } catch (err) {
       console.error("Failed to update status:", err);
@@ -174,10 +294,40 @@ export default function TasksPage() {
       const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
       if (res.ok) {
         setTasks((prev) => prev.filter((t) => t._id !== taskId));
+        if (activeDiscussionTask?._id === taskId) {
+          setActiveDiscussionTask(null);
+        }
       }
     } catch (err) {
       console.error("Failed to delete task:", err);
     }
+  };
+
+  const formatCommentTime = (dateInput?: string | Date) => {
+    if (!dateInput) return "";
+    const d = new Date(dateInput);
+    const now = new Date();
+    const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
+
+    if (diffSec < 30) return "Just now";
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+    return d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const getInitials = (name?: string) => {
+    if (!name) return "U";
+    return name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   if (loading || !currentUser) {
@@ -327,6 +477,7 @@ export default function TasksPage() {
               const isAssignedToMe = task.assignedTo === currentUser._id;
               const isAssignedByMe = task.assignedBy === currentUser._id;
               const canDelete = currentUser.role === "ADMIN" || isAssignedByMe;
+              const commentCount = task.comments?.length || 0;
 
               return (
                 <div
@@ -403,7 +554,7 @@ export default function TasksPage() {
                     )}
                   </div>
 
-                  {/* Card Footer: Assignee & Assigner Info */}
+                  {/* Card Footer: Assignee & Assigner Info + Comments Button */}
                   <div className="bg-slate-50/80 px-5 py-3 border-t border-slate-100 flex items-center justify-between text-xs">
                     <div>
                       <div className="flex items-center space-x-1.5 font-medium text-slate-800">
@@ -424,19 +575,277 @@ export default function TasksPage() {
                       </div>
                     </div>
 
-                    {canDelete && (
+                    <div className="flex items-center space-x-2">
+                      {/* Comment Window Trigger */}
                       <button
-                        onClick={() => handleDeleteTask(task._id!)}
-                        className="text-slate-400 hover:text-rose-600 p-1 rounded-md transition"
-                        title="Delete task"
+                        onClick={() => openDiscussion(task)}
+                        className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition ${
+                          commentCount > 0
+                            ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+                            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900"
+                        }`}
+                        title="Open task comments & discussion"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>Chat</span>
+                        {commentCount > 0 && (
+                          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-indigo-600 text-white">
+                            {commentCount}
+                          </span>
+                        )}
                       </button>
-                    )}
+
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDeleteTask(task._id!)}
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded-md transition"
+                          title="Delete task"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Task Discussion & Comments Window Modal */}
+        {activeDiscussionTask && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-3 sm:p-4">
+            <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 flex flex-col h-[85vh] max-h-[720px] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              {/* Modal Header */}
+              <div className="p-4 sm:p-5 border-b border-slate-100 bg-white flex flex-col gap-2 shrink-0">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start space-x-3">
+                    <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl mt-0.5">
+                      <MessageSquare className="w-5 h-5" />
+                    </span>
+                    <div>
+                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                            activeDiscussionTask.priority === "URGENT"
+                              ? "bg-rose-100 text-rose-700 border border-rose-200"
+                              : activeDiscussionTask.priority === "HIGH"
+                              ? "bg-amber-100 text-amber-700 border border-amber-200"
+                              : activeDiscussionTask.priority === "MEDIUM"
+                              ? "bg-blue-100 text-blue-700 border border-blue-200"
+                              : "bg-slate-100 text-slate-600 border border-slate-200"
+                          }`}
+                        >
+                          {activeDiscussionTask.priority}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                            activeDiscussionTask.status === "COMPLETED"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : activeDiscussionTask.status === "IN_PROGRESS"
+                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                              : "bg-slate-100 text-slate-700 border-slate-200"
+                          }`}
+                        >
+                          {activeDiscussionTask.status === "IN_PROGRESS"
+                            ? "In Progress"
+                            : activeDiscussionTask.status === "COMPLETED"
+                            ? "Completed"
+                            : "To Do"}
+                        </span>
+                        {activeDiscussionTask.dueDate && (
+                          <span className="text-[11px] text-slate-500 flex items-center space-x-1">
+                            <Calendar className="w-3 h-3 text-slate-400" />
+                            <span>Due {new Date(activeDiscussionTask.dueDate).toLocaleDateString()}</span>
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-900 mt-1 leading-snug">
+                        {activeDiscussionTask.title}
+                      </h3>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setActiveDiscussionTask(null)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                    title="Close discussion"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Task Context Banner */}
+                <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs text-slate-600 flex flex-col gap-1.5 mt-1">
+                  <div className="flex items-center justify-between flex-wrap gap-2 text-[11px]">
+                    <div className="flex items-center space-x-1.5">
+                      <span className="text-slate-400">Assignee:</span>
+                      <strong className="text-slate-800">
+                        {activeDiscussionTask.assignedToUser?.name || "Unassigned"}
+                      </strong>
+                      {activeDiscussionTask.assignedToUser?.level !== undefined && (
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          L{activeDiscussionTask.assignedToUser.level}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <span className="text-slate-400">Created by:</span>
+                      <strong className="text-slate-800">
+                        {activeDiscussionTask.assignedByUser?.name || "Admin"}
+                      </strong>
+                      {activeDiscussionTask.assignedByUser?.level !== undefined && (
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          L{activeDiscussionTask.assignedByUser.level}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {activeDiscussionTask.description && (
+                    <div className="pt-1.5 border-t border-slate-200/60 text-slate-600 line-clamp-2">
+                      <span className="text-slate-400 font-medium">Details: </span>
+                      {activeDiscussionTask.description}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Discussion Thread Feed */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 bg-slate-50/70">
+                {loadingComments ? (
+                  <div className="h-full flex items-center justify-center text-slate-400 text-xs">
+                    <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mr-2" />
+                    <span>Loading discussion thread...</span>
+                  </div>
+                ) : !activeDiscussionTask.comments || activeDiscussionTask.comments.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
+                    <MessageCircle className="w-12 h-12 text-slate-300 mb-2 stroke-1" />
+                    <h4 className="text-sm font-semibold text-slate-700">No comments yet</h4>
+                    <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                      Start the conversation here to post status updates, ask questions, or coordinate with the team.
+                    </p>
+                  </div>
+                ) : (
+                  activeDiscussionTask.comments.map((comment) => {
+                    const isMe = comment.userId === currentUser._id;
+                    const canDelete = isMe || currentUser.role === "ADMIN";
+
+                    return (
+                      <div
+                        key={comment._id}
+                        className={`flex items-start gap-2.5 ${isMe ? "flex-row-reverse" : "flex-row"}`}
+                      >
+                        {/* Avatar */}
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 shadow-2xs ${
+                            isMe
+                              ? "bg-indigo-600 text-white"
+                              : "bg-white text-slate-700 border border-slate-200"
+                          }`}
+                          title={comment.userName}
+                        >
+                          {getInitials(comment.userName)}
+                        </div>
+
+                        {/* Comment Bubble */}
+                        <div
+                          className={`max-w-[80%] rounded-2xl p-3 shadow-2xs group relative ${
+                            isMe
+                              ? "bg-indigo-600 text-white rounded-tr-xs"
+                              : "bg-white text-slate-900 border border-slate-200/80 rounded-tl-xs"
+                          }`}
+                        >
+                          {/* Author Header */}
+                          <div
+                            className={`flex items-center space-x-2 text-[11px] mb-1 font-medium ${
+                              isMe ? "text-indigo-100 justify-end" : "text-slate-500"
+                            }`}
+                          >
+                            <span className="font-semibold">{isMe ? "You" : comment.userName}</span>
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                                isMe
+                                  ? "bg-indigo-700 text-indigo-100"
+                                  : "bg-slate-100 text-slate-700 border border-slate-200"
+                              }`}
+                            >
+                              L{comment.userLevel}
+                            </span>
+                            <span className="text-[10px] opacity-75">
+                              {formatCommentTime(comment.createdAt)}
+                            </span>
+
+                            {canDelete && (
+                              <button
+                                onClick={() => handleDeleteComment(comment._id)}
+                                className={`opacity-0 group-hover:opacity-100 transition p-0.5 rounded ${
+                                  isMe
+                                    ? "hover:bg-indigo-700 text-indigo-200 hover:text-white"
+                                    : "hover:bg-slate-100 text-slate-400 hover:text-rose-600"
+                                }`}
+                                title="Delete comment"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Message Body */}
+                          <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">
+                            {comment.text}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={commentsEndRef} />
+              </div>
+
+              {/* Modal Footer: Comment Input Box */}
+              <div className="p-3 sm:p-4 bg-white border-t border-slate-200">
+                {commentError && (
+                  <div className="mb-2 p-2 bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs flex items-center space-x-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{commentError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handlePostComment} className="flex items-end gap-2">
+                  <div className="flex-1 relative">
+                    <textarea
+                      rows={2}
+                      value={commentInput}
+                      onChange={(e) => setCommentInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handlePostComment();
+                        }
+                      }}
+                      placeholder="Write a comment or update... (Press Enter to send, Shift+Enter for new line)"
+                      className="w-full px-3.5 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-hidden resize-none bg-slate-50 focus:bg-white transition"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={postingComment || !commentInput.trim()}
+                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center space-x-1.5 shrink-0 h-10"
+                  >
+                    {postingComment ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <span>Send</span>
+                        <Send className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+            </div>
           </div>
         )}
 

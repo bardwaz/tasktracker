@@ -180,6 +180,36 @@ class LocalCollection {
     return updated;
   }
 
+  async updateOne(filter: any, update: any): Promise<{ modifiedCount: number }> {
+    const data = this.getData();
+    const list = data[this.name] || [];
+    const index = list.findIndex((it) => matchesFilter(it, filter));
+    if (index === -1) return { modifiedCount: 0 };
+
+    if (update.$set) {
+      list[index] = { ...list[index], ...update.$set };
+    }
+    if (update.$push) {
+      for (const field of Object.keys(update.$push)) {
+        if (!Array.isArray(list[index][field])) {
+          list[index][field] = [];
+        }
+        list[index][field].push(update.$push[field]);
+      }
+    }
+    if (update.$pull) {
+      for (const field of Object.keys(update.$pull)) {
+        if (Array.isArray(list[index][field])) {
+          const pullCriteria = update.$pull[field];
+          list[index][field] = list[index][field].filter((item: any) => !matchesFilter(item, pullCriteria));
+        }
+      }
+    }
+
+    saveData(data);
+    return { modifiedCount: 1 };
+  }
+
   async deleteOne(filter: any): Promise<{ deletedCount: number }> {
     const data = this.getData();
     const list = data[this.name] || [];
