@@ -104,7 +104,29 @@ export async function sendWhatsAppTaskAlert(
 
       if (isWindowError) {
         console.log(`[WhatsApp] Recipient outside 24h window. Attempting template message fallback to ${recipient}...`);
-        const templateName = process.env.WHATSAPP_TEMPLATE_NAME || "hello_world";
+        const templateName = process.env.WHATSAPP_TEMPLATE_NAME || "task_assignment";
+
+        const templatePayload: any = {
+          name: templateName,
+          language: { code: "en_US" },
+        };
+
+        // If using the task_assignment template, supply parameter values for {{1}} to {{5}}
+        if (templateName === "task_assignment") {
+          templatePayload.components = [
+            {
+              type: "body",
+              parameters: [
+                { type: "text", text: taskTitle.slice(0, 60) },
+                { type: "text", text: priority },
+                { type: "text", text: `${assignerName} (L${assignerLevel})`.slice(0, 40) },
+                { type: "text", text: dueDate ? new Date(dueDate).toLocaleDateString() : "No deadline" },
+                { type: "text", text: (description && description.trim() ? description.trim() : "No additional details").slice(0, 200) },
+              ],
+            },
+          ];
+        }
+
         const templateRes = await fetch(url, {
           method: "POST",
           headers: {
@@ -115,10 +137,7 @@ export async function sendWhatsAppTaskAlert(
             messaging_product: "whatsapp",
             to: recipient,
             type: "template",
-            template: {
-              name: templateName,
-              language: { code: "en_US" },
-            },
+            template: templatePayload,
           }),
         });
 
@@ -127,6 +146,8 @@ export async function sendWhatsAppTaskAlert(
           const tId = templateData.messages?.[0]?.id;
           console.log(`[WhatsApp] Template fallback successfully delivered (ID: ${tId})`);
           return { success: true, messageId: tId };
+        } else {
+          console.warn("[WhatsApp Template Error]:", JSON.stringify(templateData.error || templateData));
         }
       }
 
