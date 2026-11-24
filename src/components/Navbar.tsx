@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { ISafeUser } from "@/types";
@@ -11,8 +11,19 @@ import {
   Layers,
   Menu,
   X,
-  Phone,
+  Bell,
+  BellRing,
+  BellOff,
+  CheckCircle2,
+  Sparkles,
 } from "lucide-react";
+import {
+  isNotificationSupported,
+  getNotificationPermission,
+  requestNotificationPermission,
+  showPWANotification,
+  registerServiceWorker,
+} from "@/lib/notifications";
 
 interface NavbarProps {
   user: ISafeUser;
@@ -22,6 +33,43 @@ export default function Navbar({ user }: NavbarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
+  const [showNotificationMenu, setShowNotificationMenu] = useState(false);
+  const [testSent, setTestSent] = useState(false);
+
+  useEffect(() => {
+    registerServiceWorker();
+    if (isNotificationSupported()) {
+      setNotificationPermission(getNotificationPermission());
+    }
+  }, []);
+
+  const handleToggleNotifications = async () => {
+    if (!isNotificationSupported()) {
+      alert("Push notifications are not supported on this browser.");
+      return;
+    }
+
+    if (notificationPermission !== "granted") {
+      const perm = await requestNotificationPermission();
+      setNotificationPermission(perm);
+      if (perm === "granted") {
+        showPWANotification("🔔 TaskTracker Notifications Enabled!", {
+          body: "You will now receive lock screen and desktop alerts for new tasks and team comments.",
+        });
+      }
+    } else {
+      setShowNotificationMenu(!showNotificationMenu);
+    }
+  };
+
+  const handleSendTestNotification = async () => {
+    setTestSent(true);
+    await showPWANotification("📋 TaskTracker Test Alert", {
+      body: `Hi ${user.name}! PWA push notification is working perfectly on your device.`,
+    });
+    setTimeout(() => setTestSent(false), 3000);
+  };
 
   const handleLogout = async () => {
     try {
@@ -79,8 +127,75 @@ export default function Navbar({ user }: NavbarProps) {
           </nav>
         </div>
 
-        {/* Desktop Profile & Logout */}
-        <div className="hidden md:flex items-center space-x-4">
+        {/* Desktop Profile & Notification Controls */}
+        <div className="hidden md:flex items-center space-x-3">
+          {/* PWA Notification Bell */}
+          <div className="relative">
+            <button
+              onClick={handleToggleNotifications}
+              className={`relative p-2 rounded-lg transition-colors border ${
+                notificationPermission === "granted"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                  : notificationPermission === "denied"
+                  ? "bg-slate-100 text-slate-400 border-slate-200"
+                  : "bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 animate-pulse"
+              }`}
+              title={
+                notificationPermission === "granted"
+                  ? "PWA Notifications Active (Click to manage)"
+                  : notificationPermission === "denied"
+                  ? "Notifications Blocked in Browser Settings"
+                  : "Enable PWA Notifications"
+              }
+            >
+              {notificationPermission === "granted" ? (
+                <BellRing className="w-4 h-4" />
+              ) : notificationPermission === "denied" ? (
+                <BellOff className="w-4 h-4" />
+              ) : (
+                <Bell className="w-4 h-4" />
+              )}
+
+              {notificationPermission === "default" && (
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-indigo-600 animate-ping" />
+              )}
+            </button>
+
+            {/* Notification Menu Popup */}
+            {showNotificationMenu && (
+              <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 p-4 z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div className="flex items-center space-x-1.5">
+                    <BellRing className="w-4 h-4 text-indigo-600" />
+                    <span className="text-xs font-bold text-slate-800">PWA Notifications</span>
+                  </div>
+                  <button
+                    onClick={() => setShowNotificationMenu(false)}
+                    className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                  >
+                    &times;
+                  </button>
+                </div>
+
+                <div className="my-3 text-xs text-slate-600">
+                  <div className="flex items-center space-x-1.5 font-medium text-emerald-700 bg-emerald-50 p-2 rounded-lg border border-emerald-100">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                    <span>Native alerts active for new task assignments & comments.</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleSendTestNotification}
+                  disabled={testSent}
+                  className="w-full flex items-center justify-center space-x-1.5 py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-2xs transition disabled:opacity-50"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{testSent ? "Test Alert Sent!" : "Send Test Notification"}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center space-x-3 text-right">
             <div>
               <div className="text-sm font-semibold text-slate-800 leading-tight">
@@ -112,8 +227,25 @@ export default function Navbar({ user }: NavbarProps) {
           </button>
         </div>
 
-        {/* Mobile Hamburger Button */}
+        {/* Mobile Header Controls */}
         <div className="flex md:hidden items-center space-x-2">
+          {/* Mobile Notification Button */}
+          <button
+            onClick={handleToggleNotifications}
+            className={`p-1.5 rounded-lg border text-xs ${
+              notificationPermission === "granted"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-indigo-50 text-indigo-600 border-indigo-200"
+            }`}
+            title="PWA Notifications"
+          >
+            {notificationPermission === "granted" ? (
+              <BellRing className="w-4 h-4" />
+            ) : (
+              <Bell className="w-4 h-4" />
+            )}
+          </button>
+
           {/* Quick Level Badge on Mobile */}
           <span
             className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${
@@ -154,6 +286,29 @@ export default function Navbar({ user }: NavbarProps) {
             >
               Level {user.level}
             </div>
+          </div>
+
+          {/* PWA Notification Option in Mobile Menu */}
+          <div className="p-2.5 bg-indigo-50/60 rounded-lg border border-indigo-100 flex items-center justify-between">
+            <div className="flex items-center space-x-2 text-xs font-medium text-slate-700">
+              <BellRing className="w-4 h-4 text-indigo-600" />
+              <span>PWA Notifications: {notificationPermission === "granted" ? "Active" : "Disabled"}</span>
+            </div>
+            {notificationPermission !== "granted" ? (
+              <button
+                onClick={handleToggleNotifications}
+                className="px-2.5 py-1 bg-indigo-600 text-white rounded text-[11px] font-semibold"
+              >
+                Enable
+              </button>
+            ) : (
+              <button
+                onClick={handleSendTestNotification}
+                className="px-2 py-1 bg-emerald-600 text-white rounded text-[10px] font-semibold"
+              >
+                Test Alert
+              </button>
+            )}
           </div>
 
           {/* Navigation links */}

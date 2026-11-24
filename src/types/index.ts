@@ -17,6 +17,13 @@ export interface IUser {
   updatedAt?: string | Date;
 }
 
+export interface IUserTaskStats {
+  assigned: number;
+  completed: number;
+  inProgress: number;
+  todo: number;
+}
+
 export interface ISafeUser {
   _id: string;
   name: string;
@@ -25,7 +32,15 @@ export interface ISafeUser {
   level: number;
   title?: string;
   phone?: string;
+  taskStats?: IUserTaskStats;
   createdAt?: string | Date;
+}
+
+export interface ITaskAttachment {
+  name: string;
+  size: number;
+  type: string;
+  dataUrl: string;
 }
 
 export interface ITaskComment {
@@ -34,6 +49,7 @@ export interface ITaskComment {
   userName: string;
   userLevel: number;
   text: string;
+  attachments?: ITaskAttachment[];
   createdAt: string | Date;
 }
 

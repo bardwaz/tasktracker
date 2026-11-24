@@ -20,11 +20,27 @@ export async function GET(req: NextRequest) {
       .sort({ level: -1, name: 1 })
       .toArray();
 
+    // Query all tasks to calculate assignment and completion stats per user
+    const tasks = await db.collection("tasks").find({}).toArray();
+    const statsMap = new Map<string, { assigned: number; completed: number; inProgress: number; todo: number }>();
+
+    for (const t of tasks) {
+      const assignedId = t.assignedTo?.toString();
+      if (!assignedId) continue;
+      const current = statsMap.get(assignedId) || { assigned: 0, completed: 0, inProgress: 0, todo: 0 };
+      current.assigned += 1;
+      if (t.status === "COMPLETED") current.completed += 1;
+      else if (t.status === "IN_PROGRESS") current.inProgress += 1;
+      else current.todo += 1;
+      statsMap.set(assignedId, current);
+    }
+
     return NextResponse.json({
       success: true,
       data: users.map((u: any) => ({
         ...u,
         _id: u._id.toString(),
+        taskStats: statsMap.get(u._id.toString()) || { assigned: 0, completed: 0, inProgress: 0, todo: 0 },
       })),
     });
   } catch (error: any) {

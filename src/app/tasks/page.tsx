@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
-import { ISafeUser, ITask, ITaskComment, TaskPriority, TaskStatus } from "@/types";
+import { ISafeUser, ITask, ITaskComment, ITaskAttachment, TaskPriority, TaskStatus } from "@/types";
 import {
   Plus,
   Search,
@@ -23,7 +23,12 @@ import {
   Send,
   X,
   MessageCircle,
+  Paperclip,
+  FileText,
+  Download,
+  Image as ImageIcon,
 } from "lucide-react";
+import { showPWANotification } from "@/lib/notifications";
 
 export default function TasksPage() {
   const router = useRouter();
@@ -51,10 +56,12 @@ export default function TasksPage() {
   // Task Discussion & Comments States
   const [activeDiscussionTask, setActiveDiscussionTask] = useState<ITask | null>(null);
   const [commentInput, setCommentInput] = useState("");
+  const [selectedAttachments, setSelectedAttachments] = useState<ITaskAttachment[]>([]);
   const [postingComment, setPostingComment] = useState(false);
   const [loadingComments, setLoadingComments] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
   const commentsEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchSessionAndData = async () => {
     try {
@@ -132,6 +139,7 @@ export default function TasksPage() {
   const openDiscussion = async (task: ITask) => {
     setActiveDiscussionTask(task);
     setCommentInput("");
+    setSelectedAttachments([]);
     setCommentError(null);
     setLoadingComments(true);
 
@@ -152,9 +160,60 @@ export default function TasksPage() {
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (selectedAttachments.length + files.length > 5) {
+      setCommentError("Maximum 5 file attachments allowed per comment.");
+      return;
+    }
+
+    setCommentError(null);
+
+    Array.from(files).forEach((file) => {
+      // 3MB per file limit to ensure high performance
+      if (file.size > 3 * 1024 * 1024) {
+        setCommentError(`File "${file.name}" exceeds the 3MB upload limit.`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setSelectedAttachments((prev) => [
+          ...prev,
+          {
+            name: file.name,
+            size: file.size,
+            type: file.type || "application/octet-stream",
+            dataUrl,
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setSelectedAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return "0 B";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   const handlePostComment = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!commentInput.trim() || !activeDiscussionTask || postingComment) return;
+    const trimmed = commentInput.trim();
+    if ((!trimmed && selectedAttachments.length === 0) || !activeDiscussionTask || postingComment) return;
 
     setPostingComment(true);
     setCommentError(null);
@@ -163,7 +222,10 @@ export default function TasksPage() {
       const res = await fetch(`/api/tasks/${activeDiscussionTask._id}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: commentInput.trim() }),
+        body: JSON.stringify({
+          text: trimmed,
+          attachments: selectedAttachments,
+        }),
       });
 
       const data = await res.json();
@@ -187,6 +249,12 @@ export default function TasksPage() {
       );
 
       setCommentInput("");
+      setSelectedAttachments([]);
+
+      // PWA Notification trigger
+      showPWANotification(`💬 Comment on: ${activeDiscussionTask.title}`, {
+        body: `${currentUser?.name}: ${trimmed || (selectedAttachments.length + " attachment(s)")}`,
+      });
     } catch (err: any) {
       setCommentError(err.message || "Failed to post comment");
     } finally {
@@ -257,6 +325,11 @@ export default function TasksPage() {
 
       // Refresh tasks
       fetchTasks(tab, statusFilter, priorityFilter);
+
+      // PWA Notification trigger
+      showPWANotification("📋 Task Assigned Successfully!", {
+        body: `"${taskTitle}" has been dispatched with priority ${priority}.`,
+      });
     } catch (err: any) {
       setFormError(err.message || "Failed to assign task");
     } finally {
@@ -792,9 +865,68 @@ export default function TasksPage() {
                           </div>
 
                           {/* Message Body */}
-                          <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">
-                            {comment.text}
-                          </p>
+                          {comment.text && (
+                            <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">
+                              {comment.text}
+                            </p>
+                          )}
+
+                          {/* File Attachments */}
+                          {comment.attachments && comment.attachments.length > 0 && (
+                            <div className="mt-2.5 space-y-2">
+                              {comment.attachments.map((att, attIdx) => {
+                                const isImg = att.type?.startsWith("image/");
+                                return (
+                                  <div key={attIdx} className="overflow-hidden rounded-lg">
+                                    {isImg ? (
+                                      <div className="flex flex-col gap-1">
+                                        <a
+                                          href={att.dataUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="block overflow-hidden rounded-lg border border-black/10 bg-black/5"
+                                        >
+                                          <img
+                                            src={att.dataUrl}
+                                            alt={att.name}
+                                            className="max-h-56 max-w-full rounded-lg object-contain hover:opacity-95 transition"
+                                          />
+                                        </a>
+                                        <div className="flex items-center justify-between text-[10px] px-1 opacity-80">
+                                          <span className="truncate max-w-[160px]">{att.name}</span>
+                                          <a
+                                            href={att.dataUrl}
+                                            download={att.name}
+                                            className="flex items-center space-x-0.5 hover:underline font-semibold"
+                                          >
+                                            <Download className="w-3 h-3" />
+                                            <span>{formatFileSize(att.size)}</span>
+                                          </a>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <a
+                                        href={att.dataUrl}
+                                        download={att.name}
+                                        className={`flex items-center space-x-2.5 p-2 rounded-lg text-xs font-medium border transition ${
+                                          isMe
+                                            ? "bg-indigo-700/60 hover:bg-indigo-700 text-white border-indigo-500"
+                                            : "bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200"
+                                        }`}
+                                      >
+                                        <FileText className="w-4 h-4 shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                          <div className="truncate font-semibold text-[11px]">{att.name}</div>
+                                          <div className="text-[10px] opacity-75">{formatFileSize(att.size)}</div>
+                                        </div>
+                                        <Download className="w-3.5 h-3.5 shrink-0" />
+                                      </a>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -809,6 +941,34 @@ export default function TasksPage() {
                   <div className="mb-2 p-2 bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs flex items-center space-x-1.5">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                     <span>{commentError}</span>
+                  </div>
+                )}
+
+                {/* Selected Attachments Preview Chips */}
+                {selectedAttachments.length > 0 && (
+                  <div className="mb-2.5 flex items-center flex-wrap gap-1.5">
+                    {selectedAttachments.map((att, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center space-x-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-800 border border-indigo-200 rounded-lg text-xs shadow-2xs"
+                      >
+                        {att.type.startsWith("image/") ? (
+                          <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
+                        ) : (
+                          <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                        )}
+                        <span className="truncate max-w-[130px] font-medium">{att.name}</span>
+                        <span className="text-[10px] text-indigo-500 font-bold">({formatFileSize(att.size)})</span>
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(idx)}
+                          className="text-indigo-400 hover:text-indigo-700 p-0.5 rounded transition"
+                          title="Remove attachment"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -829,9 +989,28 @@ export default function TasksPage() {
                     />
                   </div>
 
+                  {/* Attachment Button */}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 rounded-xl transition shrink-0 h-10 flex items-center justify-center"
+                    title="Attach files (images, PDFs, documents up to 3MB)"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf,.doc,.docx,.txt,.zip"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+
                   <button
                     type="submit"
-                    disabled={postingComment || !commentInput.trim()}
+                    disabled={postingComment || (!commentInput.trim() && selectedAttachments.length === 0)}
                     className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center space-x-1.5 shrink-0 h-10"
                   >
                     {postingComment ? (

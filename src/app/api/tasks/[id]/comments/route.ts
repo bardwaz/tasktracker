@@ -71,11 +71,12 @@ export async function POST(
     }
 
     const body = await req.json();
-    const text = body.text?.trim();
+    const text = (body.text || "").trim();
+    const rawAttachments = Array.isArray(body.attachments) ? body.attachments : [];
 
-    if (!text) {
+    if (!text && rawAttachments.length === 0) {
       return NextResponse.json(
-        { success: false, error: "Comment text cannot be empty" },
+        { success: false, error: "Comment text or file attachment is required" },
         { status: 400 }
       );
     }
@@ -86,6 +87,21 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // Limit maximum attachments per comment to 5
+    if (rawAttachments.length > 5) {
+      return NextResponse.json(
+        { success: false, error: "Maximum 5 attachments allowed per comment" },
+        { status: 400 }
+      );
+    }
+
+    const sanitizedAttachments = rawAttachments.map((a: any) => ({
+      name: String(a.name || "attachment").slice(0, 120),
+      size: Number(a.size) || 0,
+      type: String(a.type || "application/octet-stream"),
+      dataUrl: String(a.dataUrl || ""),
+    })).filter((a: any) => Boolean(a.dataUrl));
 
     const db = await getDb();
     const task = await db.collection("tasks").findOne({ _id: new ObjectId(id) });
@@ -103,6 +119,7 @@ export async function POST(
       userName: session.name || "User",
       userLevel: Number(session.level) || 0,
       text,
+      attachments: sanitizedAttachments.length > 0 ? sanitizedAttachments : undefined,
       createdAt: new Date().toISOString(),
     };
 

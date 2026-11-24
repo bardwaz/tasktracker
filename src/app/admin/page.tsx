@@ -16,6 +16,7 @@ import {
   TrendingDown,
   Info,
   Phone,
+  CheckSquare,
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -215,7 +216,7 @@ export default function AdminPage() {
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 my-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 my-6">
           <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-4">
             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
               <Users className="w-6 h-6" />
@@ -232,7 +233,21 @@ export default function AdminPage() {
             </div>
             <div>
               <div className="text-2xl font-bold text-slate-900">{uniqueLevels.length}</div>
-              <div className="text-xs text-slate-500">Distinct Precedence Levels</div>
+              <div className="text-xs text-slate-500">Distinct Levels</div>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs flex items-center space-x-4">
+            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+              <CheckSquare className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-slate-900">
+                {users.reduce((acc, u) => acc + (u.taskStats?.assigned || 0), 0)}
+              </div>
+              <div className="text-xs text-slate-500">
+                Total Tasks Assigned ({users.reduce((acc, u) => acc + (u.taskStats?.completed || 0), 0)} Done)
+              </div>
             </div>
           </div>
 
@@ -244,7 +259,7 @@ export default function AdminPage() {
               <div className="text-2xl font-bold text-slate-900">
                 {uniqueLevels[0] || 100} &rarr; {uniqueLevels[uniqueLevels.length - 1] || 10}
               </div>
-              <div className="text-xs text-slate-500">Max to Min Precedence Range</div>
+              <div className="text-xs text-slate-500">Precedence Range</div>
             </div>
           </div>
         </div>
@@ -271,6 +286,7 @@ export default function AdminPage() {
               <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200/60">
                 <tr>
                   <th className="px-6 py-3.5">Member</th>
+                  <th className="px-6 py-3.5">Tasks Assigned & Completed</th>
                   <th className="px-6 py-3.5">Title / Designation</th>
                   <th className="px-6 py-3.5">Role</th>
                   <th className="px-6 py-3.5">Precedence Level</th>
@@ -283,6 +299,9 @@ export default function AdminPage() {
                   const subordinatesCount = users.filter(
                     (sub) => sub._id !== u._id && sub.level < u.level
                   ).length;
+                  const assignedCount = u.taskStats?.assigned || 0;
+                  const completedCount = u.taskStats?.completed || 0;
+                  const percentComplete = assignedCount > 0 ? Math.round((completedCount / assignedCount) * 100) : 0;
 
                   return (
                     <tr key={u._id} className="hover:bg-slate-50/70 transition-colors">
@@ -298,6 +317,48 @@ export default function AdminPage() {
                         ) : (
                           <div className="mt-1 text-[10px] text-slate-400">No WhatsApp linked</div>
                         )}
+                        {/* Tasks Count alongside name */}
+                        <div className="mt-2 flex items-center space-x-2">
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                            <CheckSquare className="w-3 h-3 text-slate-500" />
+                            <span>{assignedCount} Assigned</span>
+                          </span>
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <CheckCircle className="w-3 h-3 text-emerald-600" />
+                            <span>{completedCount} Done</span>
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1 min-w-[140px]">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-slate-800">
+                              {completedCount} of {assignedCount} Completed
+                            </span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                              percentComplete === 100
+                                ? "bg-emerald-100 text-emerald-800"
+                                : percentComplete > 0
+                                ? "bg-blue-50 text-blue-700"
+                                : "bg-slate-100 text-slate-600"
+                            }`}>
+                              {percentComplete}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className={`h-1.5 rounded-full transition-all duration-300 ${
+                                percentComplete === 100 ? "bg-emerald-500" : "bg-indigo-600"
+                              }`}
+                              style={{ width: `${percentComplete}%` }}
+                            />
+                          </div>
+                          {u.taskStats?.inProgress ? (
+                            <span className="text-[10px] text-blue-600 font-medium">
+                              {u.taskStats.inProgress} in progress
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-slate-700 font-medium">
                         {u.title || "—"}
