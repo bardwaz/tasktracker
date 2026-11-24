@@ -108,7 +108,7 @@ export async function sendWhatsAppTaskAlert(
 
         const templatePayload: any = {
           name: templateName,
-          language: { code: "en_US" },
+          language: { code: process.env.WHATSAPP_TEMPLATE_LANG || "en" },
         };
 
         // If using the task_assignment template, supply parameter values for {{1}} to {{5}}
