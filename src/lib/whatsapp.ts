@@ -73,6 +73,52 @@ export async function sendWhatsAppTaskAlert(
 
   try {
     const url = `https://graph.facebook.com/v20.0/${phoneId}/messages`;
+    // Primary Dispatch: Use approved Template (guarantees delivery outside 24h window to any phone)
+    const templateName = process.env.WHATSAPP_TEMPLATE_NAME || "task_assignment";
+    const templateLang = process.env.WHATSAPP_TEMPLATE_LANG || "en";
+
+    const templatePayload: any = {
+      name: templateName,
+      language: { code: templateLang },
+      components: [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: (taskTitle || "New Task").slice(0, 60) },
+            { type: "text", text: priority || "MEDIUM" },
+            { type: "text", text: `${assignerName || "Manager"} (L${assignerLevel})`.slice(0, 40) },
+            { type: "text", text: dueDate ? new Date(dueDate).toLocaleDateString() : "No deadline" },
+            { type: "text", text: (description && description.trim() ? description.trim() : "No additional details").slice(0, 200) },
+          ],
+        },
+      ],
+    };
+
+    const templateRes = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: recipient,
+        type: "template",
+        template: templatePayload,
+      }),
+    });
+
+    const templateData = await templateRes.json();
+
+    if (templateRes.ok && !templateData.error) {
+      const messageId = templateData.messages?.[0]?.id;
+      console.log(`[WhatsApp] Template alert successfully dispatched to ${recipient} (ID: ${messageId})`);
+      return { success: true, messageId };
+    }
+
+    console.warn("[WhatsApp Template Warning, attempting text fallback]:", JSON.stringify(templateData.error || templateData));
+
+    // Fallback: Free-form text message (works if 24h window is open)
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -94,71 +140,15 @@ export async function sendWhatsAppTaskAlert(
     const data = await res.json();
 
     if (!res.ok || data.error) {
-      console.warn("[WhatsApp Cloud API Warning]:", JSON.stringify(data.error || data));
-
-      // If user is outside 24h window (error 131047), fall back to Template Message
-      const isWindowError =
-        data.error?.code === 131047 ||
-        data.error?.error_subcode === 2494011 ||
-        data.error?.message?.includes("24 hours");
-
-      if (isWindowError) {
-        console.log(`[WhatsApp] Recipient outside 24h window. Attempting template message fallback to ${recipient}...`);
-        const templateName = process.env.WHATSAPP_TEMPLATE_NAME || "task_assignment";
-
-        const templatePayload: any = {
-          name: templateName,
-          language: { code: process.env.WHATSAPP_TEMPLATE_LANG || "en" },
-        };
-
-        // If using the task_assignment template, supply parameter values for {{1}} to {{5}}
-        if (templateName === "task_assignment") {
-          templatePayload.components = [
-            {
-              type: "body",
-              parameters: [
-                { type: "text", text: taskTitle.slice(0, 60) },
-                { type: "text", text: priority },
-                { type: "text", text: `${assignerName} (L${assignerLevel})`.slice(0, 40) },
-                { type: "text", text: dueDate ? new Date(dueDate).toLocaleDateString() : "No deadline" },
-                { type: "text", text: (description && description.trim() ? description.trim() : "No additional details").slice(0, 200) },
-              ],
-            },
-          ];
-        }
-
-        const templateRes = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            messaging_product: "whatsapp",
-            to: recipient,
-            type: "template",
-            template: templatePayload,
-          }),
-        });
-
-        const templateData = await templateRes.json();
-        if (templateRes.ok && !templateData.error) {
-          const tId = templateData.messages?.[0]?.id;
-          console.log(`[WhatsApp] Template fallback successfully delivered (ID: ${tId})`);
-          return { success: true, messageId: tId };
-        } else {
-          console.warn("[WhatsApp Template Error]:", JSON.stringify(templateData.error || templateData));
-        }
-      }
-
+      console.error("[WhatsApp Cloud API Error]:", JSON.stringify(data.error || data));
       return {
         success: false,
-        error: data.error?.message || "Failed to send WhatsApp message",
+        error: data.error?.message || templateData.error?.message || "Failed to send WhatsApp message",
       };
     }
 
     const messageId = data.messages?.[0]?.id;
-    console.log(`[WhatsApp] Alert successfully sent to ${recipient} (Message ID: ${messageId})`);
+    console.log(`[WhatsApp] Text alert successfully sent to ${recipient} (Message ID: ${messageId})`);
     return { success: true, messageId };
   } catch (err: any) {
     console.error("[WhatsApp Network Error]:", err.message || err);
