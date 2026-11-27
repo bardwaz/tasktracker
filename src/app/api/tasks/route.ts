@@ -200,17 +200,23 @@ export async function POST(req: NextRequest) {
 
     const result = await db.collection("tasks").insertOne(newTask);
 
-    // If target has a registered WhatsApp phone, dispatch alert asynchronously
+    // If target has a registered WhatsApp phone, dispatch alert and await delivery before serverless freeze
+    let whatsappResult: any = null;
     if (targetUser.phone) {
-      sendWhatsAppTaskAlert({
-        toPhone: targetUser.phone,
-        taskTitle: newTask.title,
-        description: newTask.description,
-        priority: newTask.priority,
-        assignerName: session.name || "Manager",
-        assignerLevel: session.level,
-        dueDate: newTask.dueDate || undefined,
-      }).catch((err) => console.error("WhatsApp notification error:", err));
+      try {
+        whatsappResult = await sendWhatsAppTaskAlert({
+          toPhone: targetUser.phone,
+          taskTitle: newTask.title,
+          description: newTask.description,
+          priority: newTask.priority,
+          assignerName: session.name || "Manager",
+          assignerLevel: session.level,
+          dueDate: newTask.dueDate || undefined,
+        });
+        console.log(`[API /tasks] WhatsApp dispatch result for ${targetUser.phone}:`, whatsappResult);
+      } catch (err: any) {
+        console.error(`[API /tasks] WhatsApp dispatch error:`, err);
+      }
     }
 
     return NextResponse.json({
@@ -218,9 +224,12 @@ export async function POST(req: NextRequest) {
       data: {
         ...newTask,
         _id: result.insertedId.toString(),
+        whatsappNotified: Boolean(whatsappResult?.success),
       },
       message: targetUser.phone
-        ? "Task assigned & WhatsApp notification dispatched!"
+        ? (whatsappResult?.success
+            ? "Task assigned & WhatsApp notification delivered!"
+            : `Task assigned (WhatsApp alert: ${whatsappResult?.error || "pending"})`)
         : "Task assigned successfully",
     });
   } catch (error: any) {
